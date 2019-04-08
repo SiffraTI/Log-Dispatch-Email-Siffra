@@ -7,124 +7,77 @@ use Carp;
 $Carp::Verbose = 1;
 use utf8;
 use Data::Dumper;
+use DDP;
+use Encode qw(decode encode);
 use Log::Any qw($log);
-use Scalar::Util qw(blessed);
 
-BEGIN {
+$| = 1;    #autoflush
+
+BEGIN
+{
+    binmode( STDOUT, ":encoding(UTF-8)" );
+    binmode( STDERR, ":encoding(UTF-8)" );
+    require Log::Dispatch::Email;
     use Exporter ();
     use vars qw($VERSION @ISA @EXPORT @EXPORT_OK %EXPORT_TAGS);
-    $VERSION     = '0.01';
-    @ISA         = qw(Exporter);
+    $VERSION = '0.01';
+    @ISA     = qw(Log::Dispatch::Email Exporter);
+
     #Give a hoot don't pollute, do not export more than needed by default
     @EXPORT      = qw();
     @EXPORT_OK   = qw();
     %EXPORT_TAGS = ();
-}
+} ## end BEGIN
 
-
-#################### subroutine header begin ####################
-
-=head2 sample_function
-
- Usage     : How to use this function/method
- Purpose   : What it does
- Returns   : What it returns
- Argument  : What it wants to know
- Throws    : Exceptions and other anomolies
- Comment   : This is a sample subroutine header.
-           : It is polite to include more pod and fewer comments.
-
-See Also   :
-
+=head3 C<send_email()>
 =cut
 
-#################### subroutine header end ####################
-
-
-=head2 C<new()>
-
-  Usage     : $self->block_new_method() within text_pm_file()
-  Purpose   : Build 'new()' method as part of a pm file
-  Returns   : String holding sub new.
-  Argument  : $module: pointer to the module being built
-              (as there can be more than one module built by EU::MM);
-              for the primary module it is a pointer to $self
-  Throws    : n/a
-  Comment   : This method is a likely candidate for alteration in a subclass,
-              e.g., pass a single hash-ref to new() instead of a list of
-              parameters.
-
-=cut
-
-sub new
-{
-    my ($class, %parameters) = @_;
-
-    my $self = {};
-    #my $self = $class->SUPER::new( %parameters );
-
-    $self = bless ($self, ref ($class) || $class);
-
-    $log->info( "new", { progname => $0, pid => $$, perl_version => $], package => __PACKAGE__ } );
-
-    #$self->_initialize( %parameters );
-    return $self;
-}
-
-sub _initialize()
+sub send_email
 {
     my ( $self, %parameters ) = @_;
-    $log->info( "_initialize", { package => __PACKAGE__ } );
-} ## end sub _initialize
 
-sub END
-{
-    $log->info( "END", { package => __PACKAGE__ } );
-}
+    # Send email somehow. Message is in $parameters{message}
+    use MIME::Lite;
 
-=head2 C<AUTOLOAD>
- 
-  Usage     : $self->block_new_method() within text_pm_file()
-  Purpose   : Build 'new()' method as part of a pm file
-  Returns   : String holding sub new.
-  Argument  : $module: pointer to the module being built
-              (as there can be more than one module built by EU::MM);
-              for the primary module it is a pointer to $self
-  Throws    : n/a
-  Comment   : This method is a likely candidate for alteration in a subclass,
-              e.g., pass a single hash-ref to new() instead of a list of
-              parameters.
- 
+    my $to      = ( join ',', @{ $self->{ to } } );
+    my $from    = $self->{ from };
+    my $subject = encode( 'utf8', 'Test Email encode : não / ü / ção...' );
+    my $message = "<h4>$parameters{ message }</h4>";
+    $message = encode( 'utf8', $message );
+
+    my $msg = MIME::Lite->new(
+        From    => $from,
+        To      => $to,
+        Subject => $subject,
+        Data    => $message,
+        Type    => 'text/html; charset=UTF-8',
+    );
+
+    $msg->attr( 'content-type'         => 'text/html' );
+    $msg->attr( 'content-type.charset' => 'UTF-8' );
+    $msg->send( 'smtp', 'mail', 'port', 2525 );
+    $log->info( "Email Sent Successfully\n" );
+} ## end sub send_email
+
+=head3 C<flush()>
 =cut
 
-sub AUTOLOAD
-{
-    my ( $self, @parameters ) = @_;
-    our $AUTOLOAD;
-
-    return if ( $AUTOLOAD =~ /DESTROY/ );
-} ## end sub AUTOLOAD
-
-sub DESTROY
+sub flush
 {
     my ( $self, %parameters ) = @_;
-    $log->info( 'DESTROY', { package => __PACKAGE__, GLOBAL_PHASE => ${^GLOBAL_PHASE} } );
-    return if ${^GLOBAL_PHASE} eq 'DESTRUCT';
 
-    if ( blessed( $self ) && $self->isa( __PACKAGE__ ) )
+    if ( $self->{ buffered } && @{ $self->{ buffer } } )
     {
-        $log->alert( "DESTROY", { package => __PACKAGE__, GLOBAL_PHASE => ${^GLOBAL_PHASE}, blessed => 1 } );
-    }
-    else
-    {
-        # TODO
-    }
-} ## end sub DESTROY
+        my $message = join "<br>", @{ $self->{ buffer } };
+
+        $self->send_email( message => $message );
+        $self->{ buffer } = [];
+    } ## end if ( $self->{ buffered...})
+} ## end sub flush
 
 #################### main pod documentation begin ###################
 ## Below is the stub of documentation for your module.
 ## You better edit it!
-
 
 =encoding UTF-8
 
@@ -185,7 +138,7 @@ perl(1).
 
 #################### main pod documentation end ###################
 
-
 1;
+
 # The preceding line will help the module return a true value
 
